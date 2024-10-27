@@ -113,9 +113,10 @@ export class DiffManager {
     }
 
     // Change the vscode setting to allow codeLens in diff editor
-    vscode.workspace
-      .getConfiguration("diffEditor", editor.document.uri)
-      .update("codeLens", true, vscode.ConfigurationTarget.Global);
+    const diffEditor = vscode.workspace.getConfiguration("diffEditor", editor.document.uri);
+    if (diffEditor.get<boolean>("codeLens") === false) {
+      diffEditor.update("codeLens", true, vscode.ConfigurationTarget.Global);
+    }
 
     if (
       this.extensionContext.globalState.get<boolean>(
