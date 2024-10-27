@@ -461,22 +461,6 @@ export function Chat() {
             </div>
           ) : (
             <>
-              {getLastSessionId() ? (
-                <div className="mt-2 hidden xs:inline">
-                  <NewSessionButton
-                    onClick={async () => {
-                      loadLastSession().catch((e) =>
-                        console.error(`Failed to load last session: ${e}`),
-                      );
-                    }}
-                    className="mr-auto flex items-center gap-2"
-                  >
-                    <ArrowLeftIcon className="w-3 h-3" />
-                    Last Session
-                  </NewSessionButton>
-                </div>
-              ) : null}
-
               {onboardingCard.show && (
                 <div className="mt-10 mx-2">
                   <OnboardingCard activeTab={onboardingCard.activeTab} />
