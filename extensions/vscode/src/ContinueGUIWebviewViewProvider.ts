@@ -1,11 +1,13 @@
-import type { FileEdit } from "core";
 import { ConfigHandler } from "core/config/ConfigHandler";
 import { EXTENSION_NAME } from "core/control-plane/env";
 import * as vscode from "vscode";
+
 import { getTheme } from "./util/getTheme";
 import { getExtensionVersion } from "./util/util";
 import { getExtensionUri, getNonce, getUniqueId } from "./util/vscode";
 import { VsCodeWebviewProtocol } from "./webviewProtocol";
+
+import type { FileEdit } from "core";
 
 export class ContinueGUIWebviewViewProvider
   implements vscode.WebviewViewProvider
@@ -13,12 +15,14 @@ export class ContinueGUIWebviewViewProvider
   public static readonly viewType = "continue.continueGUIView";
   public webviewProtocol: VsCodeWebviewProtocol;
 
+  public get isReady(): boolean {
+    return !!this.webview;
+  }
+
   private updateDebugLogsStatus() {
     const settings = vscode.workspace.getConfiguration(EXTENSION_NAME);
     this.enableDebugLogs = settings.get<boolean>("enableDebugLogs", false);
-    if (this.enableDebugLogs) {
-      this.outputChannel.show(true);
-    } else {
+    if (!this.enableDebugLogs) {
       this.outputChannel.hide();
     }
   }
@@ -29,9 +33,7 @@ export class ContinueGUIWebviewViewProvider
       if (event.affectsConfiguration("continue.enableDebugLogs")) {
         const settings = vscode.workspace.getConfiguration(EXTENSION_NAME);
         const enableDebugLogs = settings.get<boolean>("enableDebugLogs", false);
-        if (enableDebugLogs) {
-          this.outputChannel.show(true);
-        } else {
+        if (!enableDebugLogs) {
           this.outputChannel.hide();
         }
       }
@@ -58,6 +60,7 @@ export class ContinueGUIWebviewViewProvider
     _context: vscode.WebviewViewResolveContext,
     _token: vscode.CancellationToken,
   ): void | Thenable<void> {
+    this._webviewView = webviewView;
     this._webview = webviewView.webview;
     this._webview.onDidReceiveMessage((message) =>
       this.handleWebviewMessage(message),
@@ -161,7 +164,15 @@ export class ContinueGUIWebviewViewProvider
 
     const currentTheme = getTheme();
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration("workbench.colorTheme")) {
+      if (
+        e.affectsConfiguration("workbench.colorTheme") ||
+        e.affectsConfiguration("window.autoDetectColorScheme") ||
+        e.affectsConfiguration("window.autoDetectHighContrast") ||
+        e.affectsConfiguration("workbench.preferredDarkColorTheme") ||
+        e.affectsConfiguration("workbench.preferredLightColorTheme") ||
+        e.affectsConfiguration("workbench.preferredHighContrastColorTheme") ||
+        e.affectsConfiguration("workbench.preferredHighContrastLightColorTheme")
+      ) {
         // Send new theme to GUI to update embedded Monaco themes
         this.webviewProtocol?.request("setTheme", { theme: getTheme() });
       }
@@ -182,22 +193,6 @@ export class ContinueGUIWebviewViewProvider
       <body>
         <div id="root"></div>
 
-        ${`<script>
-        function log(level, ...args) {
-          const text = args.map(arg =>
-            typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
-          ).join(' ');
-          vscode.postMessage({ messageType: 'log', level, text, messageId: "log" });
-        }
-
-        window.console.log = (...args) => log('log', ...args);
-        window.console.info = (...args) => log('info', ...args);
-        window.console.warn = (...args) => log('warn', ...args);
-        window.console.error = (...args) => log('error', ...args);
-        window.console.debug = (...args) => log('debug', ...args);
-
-        console.debug('Logging initialized');
-        </script>`}
         ${
           inDevelopmentMode
             ? `<script type="module">

@@ -97,7 +97,6 @@ jobs:
         with:
           node-version-file: ".nvmrc"
 
-      # Cache node_modules
       - name: Cache core node_modules
         uses: actions/cache@v3
         with:
@@ -407,7 +406,7 @@ jobs:
 
       # Run Qodana inspections
       - name: Qodana - Code Inspection
-        uses: JetBrains/qodana-action@v2024.1.5
+        uses: JetBrains/qodana-action@v2024.3.2
         with:
           cache-default-branch-only: true
 

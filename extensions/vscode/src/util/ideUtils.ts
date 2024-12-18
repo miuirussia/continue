@@ -1,6 +1,9 @@
-import type { FileEdit, RangeInFile, Thread } from "core";
 import path from "node:path";
+
+import { EXTENSION_NAME } from "core/control-plane/env";
+import _ from "lodash";
 import * as vscode from "vscode";
+
 import { threadStopped } from "../debug/debug";
 import { VsCodeExtension } from "../extension/VsCodeExtension";
 import { GitExtension, Repository } from "../otherExtensions/git";
@@ -11,14 +14,14 @@ import {
   rejectSuggestionCommand,
   showSuggestion as showSuggestionInEditor,
 } from "../suggestions";
+
 import {
   getUniqueId,
   openEditorAndRevealRange,
   uriFromFilePath,
 } from "./vscode";
 
-import { EXTENSION_NAME } from "core/control-plane/env";
-import _ from "lodash";
+import type { FileEdit, RangeInFile, Thread } from "core";
 
 const util = require("node:util");
 const asyncExec = util.promisify(require("node:child_process").exec);
@@ -81,47 +84,6 @@ export class VsCodeIdeUtils {
   // ------------------------------------ //
   // On message handlers
 
-  private _lastDecorationType: vscode.TextEditorDecorationType | null = null;
-  async highlightCode(rangeInFile: RangeInFile, color: string) {
-    const range = new vscode.Range(
-      rangeInFile.range.start.line,
-      rangeInFile.range.start.character,
-      rangeInFile.range.end.line,
-      rangeInFile.range.end.character,
-    );
-    const editor = await openEditorAndRevealRange(
-      rangeInFile.filepath,
-      range,
-      vscode.ViewColumn.One,
-    );
-    if (editor) {
-      const decorationType = vscode.window.createTextEditorDecorationType({
-        backgroundColor: color,
-        isWholeLine: true,
-      });
-      editor.setDecorations(decorationType, [range]);
-
-      const cursorDisposable = vscode.window.onDidChangeTextEditorSelection(
-        (event) => {
-          if (event.textEditor.document.uri.fsPath === rangeInFile.filepath) {
-            cursorDisposable.dispose();
-            editor.setDecorations(decorationType, []);
-          }
-        },
-      );
-
-      setTimeout(() => {
-        cursorDisposable.dispose();
-        editor.setDecorations(decorationType, []);
-      }, 2500);
-
-      if (this._lastDecorationType) {
-        editor.setDecorations(this._lastDecorationType, []);
-      }
-      this._lastDecorationType = decorationType;
-    }
-  }
-
   showSuggestion(edit: FileEdit) {
     // showSuggestion already exists
     showSuggestionInEditor(
@@ -136,9 +98,7 @@ export class VsCodeIdeUtils {
     );
   }
 
-  private async resolveAbsFilepathInWorkspace(
-    filepath: string,
-  ): Promise<string> {
+  async resolveAbsFilepathInWorkspace(filepath: string): Promise<string> {
     // If the filepath is already absolute, return it as is
     if (this.path.isAbsolute(filepath)) {
       return filepath;
@@ -158,7 +118,7 @@ export class VsCodeIdeUtils {
 
   async openFile(filepath: string, range?: vscode.Range) {
     // vscode has a builtin open/get open files
-    return openEditorAndRevealRange(
+    return await openEditorAndRevealRange(
       await this.resolveAbsFilepathInWorkspace(filepath),
       range,
       vscode.ViewColumn.One,
@@ -249,14 +209,6 @@ export class VsCodeIdeUtils {
       .map((uri) => uri.fsPath);
   }
 
-  getVisibleFiles(): string[] {
-    return vscode.window.visibleTextEditors
-      .filter((editor) => this.documentIsCode(editor.document.uri))
-      .map((editor) => {
-        return editor.document.uri.fsPath;
-      });
-  }
-
   saveFile(filepath: string) {
     vscode.window.visibleTextEditors
       .filter((editor) => this.documentIsCode(editor.document.uri))
@@ -290,56 +242,6 @@ export class VsCodeIdeUtils {
       return this.path.join(workspaceDirectories[0], filepath);
     } else {
       return filepath;
-    }
-  }
-
-  private static MAX_BYTES = 100000;
-
-  async readFile(filepath: string): Promise<string> {
-    try {
-      filepath = this.getAbsolutePath(filepath);
-      const uri = uriFromFilePath(filepath);
-
-      // First, check whether it's a notebook document
-      // Need to iterate over the cells to get full contents
-      const notebook =
-        vscode.workspace.notebookDocuments.find(
-          (doc) => doc.uri.toString() === uri.toString(),
-        ) ??
-        (uri.fsPath.endsWith("ipynb")
-          ? await vscode.workspace.openNotebookDocument(uri)
-          : undefined);
-      if (notebook) {
-        return notebook
-          .getCells()
-          .map((cell) => cell.document.getText())
-          .join("\n\n");
-      }
-
-      // Check whether it's an open document
-      const openTextDocument = vscode.workspace.textDocuments.find(
-        (doc) => doc.uri.fsPath === uri.fsPath,
-      );
-      if (openTextDocument !== undefined) {
-        return openTextDocument.getText();
-      }
-
-      const fileStats = await vscode.workspace.fs.stat(
-        uriFromFilePath(filepath),
-      );
-      if (fileStats.size > 10 * VsCodeIdeUtils.MAX_BYTES) {
-        return "";
-      }
-
-      const bytes = await vscode.workspace.fs.readFile(uri);
-
-      // Truncate the buffer to the first MAX_BYTES
-      const truncatedBytes = bytes.slice(0, VsCodeIdeUtils.MAX_BYTES);
-      const contents = new TextDecoder().decode(truncatedBytes);
-      return contents;
-    } catch (e) {
-      console.warn("Error reading file", e);
-      return "";
     }
   }
 
@@ -619,9 +521,20 @@ export class VsCodeIdeUtils {
     return repo?.state?.HEAD?.name || "NONE";
   }
 
-  async getDiff(includeUnstaged: boolean): Promise<string> {
-    let diffs: string[] = [];
-    let repos = [];
+  private splitDiff(diffString: string): string[] {
+    const fileDiffHeaderRegex = /(?=diff --git a\/.* b\/.*)/;
+
+    const diffs = diffString.split(fileDiffHeaderRegex);
+
+    if (diffs[0].trim() === "") {
+      diffs.shift();
+    }
+
+    return diffs;
+  }
+
+  async getDiff(includeUnstaged: boolean): Promise<string[]> {
+    const diffs: string[] = [];
 
     for (const dir of this.getWorkspaceDirectories()) {
       const repo = await this.getRepo(vscode.Uri.file(dir));
@@ -629,21 +542,15 @@ export class VsCodeIdeUtils {
         continue;
       }
 
-      repos.push(repo.state.HEAD?.name);
-
       const staged = await repo.diff(true);
-      diffs.push(`${staged}`);
+      diffs.push(staged);
       if (includeUnstaged) {
         const unstaged = await repo.diff(false);
-        diffs.push(`\n${unstaged}`);
+        diffs.push(unstaged);
       }
     }
 
-    const fullDiff = diffs.join("\n\n");
-    if (fullDiff.trim() === "") {
-      console.log(`Diff empty for repos: ${repos}`);
-    }
-    return fullDiff;
+    return diffs.flatMap((diff) => this.splitDiff(diff));
   }
 
   getHighlightedCode(): RangeInFile[] {

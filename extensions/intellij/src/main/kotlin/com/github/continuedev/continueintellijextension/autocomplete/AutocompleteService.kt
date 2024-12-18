@@ -1,9 +1,8 @@
 package com.github.continuedev.continueintellijextension.autocomplete
 
-import com.github.continuedev.continueintellijextension.`continue`.uuid
 import com.github.continuedev.continueintellijextension.services.ContinueExtensionSettings
 import com.github.continuedev.continueintellijextension.services.ContinuePluginService
-import com.google.gson.Gson
+import com.github.continuedev.continueintellijextension.utils.uuid
 import com.intellij.injected.editor.VirtualFileWindow
 import com.intellij.openapi.application.*
 import com.intellij.openapi.components.Service
@@ -98,8 +97,7 @@ class AutocompleteService(private val project: Project) {
 
                     if (shouldRenderCompletion(finalTextToInsert, column, lineLength, editor)) {
                         renderCompletion(editor, offset, finalTextToInsert)
-                        pendingCompletion = pendingCompletion?.copy(text = finalTextToInsert)
-
+                        pendingCompletion = PendingCompletion(editor, offset, completionId, finalTextToInsert)
                         // Hide auto-popup
 //                    AutoPopupController.getInstance(project).cancelAllRequests()
                     }
@@ -129,6 +127,13 @@ class AutocompleteService(private val project: Project) {
                 document.getText(com.intellij.openapi.util.TextRange(caretOffset, document.textLength))
             }
 
+            // Determine the index of a newline character within the text following the cursor.
+            val newlineIndex = textAfterCursor.indexOf("\r\n").takeIf { it >= 0 } ?: textAfterCursor.indexOf('\n')
+            // If a newline character is found and the current line is not empty, truncate the text at that point.
+            if (newlineIndex > 0) {
+                textAfterCursor = textAfterCursor.substring(0, newlineIndex)
+            }
+
             val indexOfTextAfterCursorInCompletion = completion.indexOf(textAfterCursor)
             if (indexOfTextAfterCursorInCompletion > 0) {
                 return@runReadAction completion.slice(0..indexOfTextAfterCursorInCompletion - 1)
@@ -145,8 +150,8 @@ class AutocompleteService(private val project: Project) {
             return
         }
         if (isInjectedFile(editor)) return
-        // Don't render completions when code completion dropdown is visible
-        if (!autocompleteLookupListener.isLookupEmpty()) {
+        // Skip rendering completions if the code completion dropdown is already visible and the IDE completion side-by-side setting is disabled
+        if (shouldSkipRender(ServiceManager.getService(ContinueExtensionSettings::class.java))) {
             return
         }
 
@@ -192,10 +197,9 @@ class AutocompleteService(private val project: Project) {
 
         editor.caretModel.moveToOffset(offset + text.length)
 
-
         project.service<ContinuePluginService>().coreMessenger?.request(
             "autocomplete/accept",
-            completion.completionId,
+            hashMapOf("completionId" to completion.completionId),
             null,
             ({})
         )
@@ -203,6 +207,10 @@ class AutocompleteService(private val project: Project) {
             clearCompletions(editor)
         }
     }
+
+    private fun shouldSkipRender(settings: ContinueExtensionSettings) =
+        !settings.continueState.showIDECompletionSideBySide && !autocompleteLookupListener.isLookupEmpty()
+
 
     private fun splitKeepingDelimiters(input: String, delimiterPattern: String = "\\s+"): List<String> {
         val initialSplit = input.split("(?<=$delimiterPattern)|(?=$delimiterPattern)".toRegex())

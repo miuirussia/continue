@@ -3,14 +3,20 @@ import dotenv from "dotenv";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { pathToFileURL } from "url";
+
+import { IdeType, SerializedContinueConfig } from "../";
 import { defaultConfig, defaultConfigJetBrains } from "../config/default";
 import Types from "../config/types";
-import { IdeType, SerializedContinueConfig } from "../";
 
 dotenv.config();
 
 const CONTINUE_GLOBAL_DIR =
   process.env.CONTINUE_GLOBAL_DIR ?? path.join(os.homedir(), ".continue");
+
+// export const DEFAULT_CONFIG_TS_CONTENTS = `import { Config } from "./types"\n\nexport function modifyConfig(config: Config): Config {
+//   return config;
+// }`;
 
 export const DEFAULT_CONFIG_TS_CONTENTS = `export function modifyConfig(config: Config): Config {
   return config;
@@ -28,6 +34,20 @@ export function getContinueUtilsPath(): string {
   return utilsPath;
 }
 
+export function getGlobalContinueIgnorePath(): string {
+  const continueIgnorePath = path.join(
+    getContinueGlobalPath(),
+    ".continueignore",
+  );
+  if (!fs.existsSync(continueIgnorePath)) {
+    fs.writeFileSync(continueIgnorePath, "");
+  }
+  return continueIgnorePath;
+}
+
+/*
+  Deprecated, replace with getContinueGlobalUri where possible
+*/
 export function getContinueGlobalPath(): string {
   // This is ~/.continue on mac/linux
   const continuePath = CONTINUE_GLOBAL_DIR;
@@ -35,6 +55,10 @@ export function getContinueGlobalPath(): string {
     fs.mkdirSync(continuePath);
   }
   return continuePath;
+}
+
+export function getContinueGlobalUri(): string {
+  return pathToFileURL(CONTINUE_GLOBAL_DIR).href;
 }
 
 export function getSessionsFolderPath(): string {
@@ -78,6 +102,18 @@ export function getConfigJsonPath(ideType: IdeType = "vscode"): string {
       fs.writeFileSync(p, JSON.stringify(defaultConfig, null, 2));
     }
   }
+  return p;
+}
+
+export function getConfigYamlPath(ideType: IdeType): string {
+  const p = path.join(getContinueGlobalPath(), "config.yaml");
+  // if (!fs.existsSync(p)) {
+  //   if (ideType === "jetbrains") {
+  //     fs.writeFileSync(p, YAML.stringify(defaultConfigYamlJetBrains));
+  //   } else {
+  //     fs.writeFileSync(p, YAML.stringify(defaultConfigYaml));
+  //   }
+  // }
   return p;
 }
 
@@ -314,7 +350,7 @@ export function getPromptLogsPath(): string {
 }
 
 export function getGlobalPromptsPath(): string {
-  return path.join(getContinueGlobalPath(), ".prompts");
+  return path.join(getContinueGlobalPath(), "prompts");
 }
 
 export function readAllGlobalPromptFiles(
@@ -347,4 +383,19 @@ export function getRepoMapFilePath(): string {
 
 export function getEsbuildBinaryPath(): string {
   return path.join(getContinueUtilsPath(), "esbuild");
+}
+
+export function setupInitialDotContinueDirectory() {
+  const devDataTypes = [
+    "chat",
+    "autocomplete",
+    "quickEdit",
+    "tokens_generated",
+  ];
+  devDataTypes.forEach((p) => {
+    const devDataPath = getDevDataFilePath(p);
+    if (!fs.existsSync(devDataPath)) {
+      fs.writeFileSync(devDataPath, "");
+    }
+  });
 }

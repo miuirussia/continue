@@ -1,9 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import { defaultConfig } from "./default";
+
+import { testConfigHandler } from "../test/fixtures";
+import { TEST_DIR } from "../test/testDir";
 import { getConfigTsPath } from "../util/paths";
-import { testConfigHandler } from "../test/util/fixtures";
-import { TEST_DIR } from "../test/util/testDir";
+
+import { defaultConfig } from "./default";
 
 describe.skip("Test the ConfigHandler and E2E config loading", () => {
   test("should show only local profile", () => {

@@ -1,4 +1,3 @@
-import { config } from "dotenv";
 import {
   BrowserSerializedContinueConfig,
   ContinueConfig,
@@ -6,7 +5,6 @@ import {
 } from "../index.js";
 
 import { ConfigResult, finalToBrowserConfig } from "./load.js";
-
 import { IProfileLoader } from "./profile/IProfileLoader.js";
 
 export interface ProfileDescription {

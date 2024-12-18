@@ -1,22 +1,9 @@
-import type { IMessenger } from "./messenger";
-import type { FromCoreProtocol, ToCoreProtocol } from "../protocol";
 import { ILLM, LLMFullCompletionOptions } from "..";
-import { stripImages } from "../llm/images";
-import { removeQuotesAndEscapes } from ".";
 
-/**
- * Removes code blocks from a message.
- *
- * Return modified message text.
- */
-function removeCodeBlocksAndTrim(msgText: string): string {
-  const codeBlockRegex = /```[\s\S]*?```/g;
+import { removeQuotesAndEscapes, removeCodeBlocksAndTrim } from ".";
 
-  // Remove code blocks from the message text
-  const textWithoutCodeBlocks = msgText.replace(codeBlockRegex, "");
-
-  return textWithoutCodeBlocks.trim();
-}
+import type { IMessenger } from "../protocol/messenger";
+import type { FromCoreProtocol, ToCoreProtocol } from "../protocol";
 
 export class ChatDescriber {
   static prompt: string | undefined =
@@ -33,14 +20,13 @@ export class ChatDescriber {
     }
 
     // Clean up and distill the message we want to send to the LLM
-    message = stripImages(message);
     message = removeCodeBlocksAndTrim(message);
 
     if (!message) {
       return;
     }
 
-    completionOptions.maxTokens = 24;
+    completionOptions.maxTokens = 6;
 
     // Prompt the user's current LLM for the title
     const titleResponse = await model.chat(
@@ -50,6 +36,7 @@ export class ChatDescriber {
           content: ChatDescriber.prompt + message,
         },
       ],
+      new AbortController().signal,
       completionOptions,
     );
 

@@ -1,9 +1,11 @@
 import { BaseContextProvider } from "../";
 import { ContextProviderName } from "../../";
+
 import CodeContextProvider from "./CodeContextProvider";
 import ContinueProxyContextProvider from "./ContinueProxyContextProvider";
 import CurrentFileContextProvider from "./CurrentFileContextProvider";
 import DatabaseContextProvider from "./DatabaseContextProvider";
+import DebugLocalsProvider from "./DebugLocalsProvider";
 import DiffContextProvider from "./DiffContextProvider";
 import DiscordContextProvider from "./DiscordContextProvider";
 import DocsContextProvider from "./DocsContextProvider";
@@ -15,9 +17,9 @@ import GoogleContextProvider from "./GoogleContextProvider";
 import GreptileContextProvider from "./GreptileContextProvider";
 import HttpContextProvider from "./HttpContextProvider";
 import JiraIssuesContextProvider from "./JiraIssuesContextProvider/";
-import DebugLocalsProvider from "./DebugLocalsProvider";
-import OSContextProvider from "./OSContextProvider";
+import MCPContextProvider from "./MCPContextProvider";
 import OpenFilesContextProvider from "./OpenFilesContextProvider";
+import OSContextProvider from "./OSContextProvider";
 import PostgresContextProvider from "./PostgresContextProvider";
 import ProblemsContextProvider from "./ProblemsContextProvider";
 import RepoMapContextProvider from "./RepoMapContextProvider";
@@ -59,6 +61,7 @@ export const Providers: (typeof BaseContextProvider)[] = [
   DiscordContextProvider,
   GreptileContextProvider,
   WebContextProvider,
+  MCPContextProvider,
 ];
 
 export function contextProviderClassFromName(
