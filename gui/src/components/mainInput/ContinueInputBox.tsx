@@ -81,9 +81,6 @@ function ContinueInputBox(props: ContinueInputBoxProps) {
   const availableContextProviders = useAppSelector(
     (state) => state.config.config.contextProviders,
   );
-  const useTools = useAppSelector(
-    (state) => state.config.config.experimental?.useTools !== false,
-  );
   const editModeState = useAppSelector((state) => state.editModeState);
 
   const filteredSlashCommands = props.isEditMode ? [] : availableSlashCommands;
@@ -100,14 +97,11 @@ function ContinueInputBox(props: ContinueInputBoxProps) {
     );
   }, [availableContextProviders]);
 
-  const isStreamingEdit =
-    editModeState.editStatus === "streaming" ||
-    editModeState.editStatus === "accepting";
-
   const historyKey = props.isEditMode ? "edit" : "chat";
   const placeholder = props.isEditMode
     ? "Describe how to modify the code - use '#' to add files"
     : undefined;
+
   const toolbarOptions: ToolbarOptions = props.isEditMode
     ? {
         hideAddContext: false,
@@ -115,11 +109,9 @@ function ContinueInputBox(props: ContinueInputBoxProps) {
         hideUseCodebase: true,
         hideSelectModel: false,
         hideTools: true,
-        enterText: isStreamingEdit ? "Retry" : "Edit",
+        enterText: editModeState.editStatus === "accepting" ? "Retry" : "Edit",
       }
-    : {
-        hideTools: !useTools,
-      };
+    : {};
 
   return (
     <div className={`${props.hidden ? "hidden" : ""}`}>

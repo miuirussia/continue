@@ -1,5 +1,6 @@
 import Parser from "web-tree-sitter";
 import { GetGhTokenArgs } from "./protocol/ide";
+
 declare global {
   interface Window {
     ide?: "vscode";
@@ -215,6 +216,10 @@ export interface ContextSubmenuItem {
   metadata?: any;
 }
 
+export interface ContextSubmenuItemWithProvider extends ContextSubmenuItem {
+  providerTitle: string;
+}
+
 export interface SiteIndexingConfig {
   title: string;
   startUrl: string;
@@ -402,7 +407,7 @@ export interface PromptLog {
   completion: string;
 }
 
-type MessageModes = "chat" | "edit";
+export type MessageModes = "chat" | "edit";
 
 export type ToolStatus =
   | "generating"
@@ -535,13 +540,13 @@ export interface DiffLine {
   line: string;
 }
 
-export class Problem {
+export interface Problem {
   filepath: string;
   range: Range;
   message: string;
 }
 
-export class Thread {
+export interface Thread {
   name: string;
   id: number;
 }
@@ -581,6 +586,16 @@ export interface IdeSettings {
   enableDebugLogs: boolean;
 }
 
+export interface FileStats {
+  size: number;
+  lastModified: number;
+}
+
+/** Map of file name to stats */
+export type FileStatsMap = {
+  [path: string]: FileStats;
+};
+
 export interface IDE {
   getIdeInfo(): Promise<IdeInfo>;
 
@@ -605,43 +620,29 @@ export interface IDE {
 
   getAvailableThreads(): Promise<Thread[]>;
 
-  listFolders(): Promise<string[]>;
-
   getWorkspaceDirs(): Promise<string[]>;
 
   getWorkspaceConfigs(): Promise<ContinueRcJson[]>;
 
-  fileExists(filepath: string): Promise<boolean>;
+  fileExists(fileUri: string): Promise<boolean>;
 
   writeFile(path: string, contents: string): Promise<void>;
 
   showVirtualFile(title: string, contents: string): Promise<void>;
 
-  getContinueDir(): Promise<string>;
-
   openFile(path: string): Promise<void>;
 
   openUrl(url: string): Promise<void>;
 
-  runCommand(command: string): Promise<void>;
+  runCommand(command: string, options?: TerminalOptions): Promise<void>;
 
-  saveFile(filepath: string): Promise<void>;
+  saveFile(fileUri: string): Promise<void>;
 
-  readFile(filepath: string): Promise<string>;
+  readFile(fileUri: string): Promise<string>;
 
-  readRangeInFile(filepath: string, range: Range): Promise<string>;
+  readRangeInFile(fileUri: string, range: Range): Promise<string>;
 
-  showLines(
-    filepath: string,
-    startLine: number,
-    endLine: number,
-  ): Promise<void>;
-
-  showDiff(
-    filepath: string,
-    newContents: string,
-    stepIndex: number,
-  ): Promise<void>;
+  showLines(fileUri: string, startLine: number, endLine: number): Promise<void>;
 
   getOpenFiles(): Promise<string[]>;
 
@@ -660,7 +661,7 @@ export interface IDE {
 
   subprocess(command: string, cwd?: string): Promise<[string, string]>;
 
-  getProblems(filepath?: string | undefined): Promise<Problem[]>;
+  getProblems(fileUri?: string | undefined): Promise<Problem[]>;
 
   getBranch(dir: string): Promise<string>;
 
@@ -678,7 +679,7 @@ export interface IDE {
 
   listDir(dir: string): Promise<[string, FileType][]>;
 
-  getLastModified(files: string[]): Promise<{ [path: string]: number }>;
+  getFileStats(files: string[]): Promise<FileStatsMap>;
 
   getGitHubAuthToken(args: GetGhTokenArgs): Promise<string | undefined>;
 
@@ -686,9 +687,7 @@ export interface IDE {
   gotoDefinition(location: Location): Promise<RangeInFile[]>;
 
   // Callbacks
-  onDidChangeActiveTextEditor(callback: (filepath: string) => void): void;
-
-  pathSep(): Promise<string>;
+  onDidChangeActiveTextEditor(callback: (fileUri: string) => void): void;
 }
 
 // Slash Commands
@@ -715,7 +714,7 @@ export interface SlashCommand {
 
 // Config
 
-type StepName =
+export type StepName =
   | "AnswerQuestionChroma"
   | "GenerateShellCommandStep"
   | "EditHighlightedCodeStep"
@@ -727,9 +726,8 @@ type StepName =
   | "GenerateShellCommandStep"
   | "DraftIssueStep";
 
-type ContextProviderName =
+export type ContextProviderName =
   | "diff"
-  | "github"
   | "terminal"
   | "debugger"
   | "open"
@@ -756,9 +754,13 @@ type ContextProviderName =
   | "issue"
   | "repo-map"
   | "url"
+  | "commit"
+  | "web"
+  | "discord"
+  | "clipboard"
   | string;
 
-type TemplateType =
+export type TemplateType =
   | "llama2"
   | "alpaca"
   | "zephyr"
@@ -821,7 +823,7 @@ export interface CustomCommand {
   description: string;
 }
 
-interface Prediction {
+export interface Prediction {
   type: "content";
   content:
     | string
@@ -852,7 +854,7 @@ export interface Tool {
   uri?: string;
 }
 
-interface BaseCompletionOptions {
+export interface BaseCompletionOptions {
   temperature?: number;
   topP?: number;
   topK?: number;
@@ -941,23 +943,24 @@ export interface TabAutocompleteOptions {
   showWhateverWeHaveAtXMs?: number;
 }
 
-interface StdioOptions {
+export interface StdioOptions {
   type: "stdio";
   command: string;
   args: string[];
+  env?: Record<string, string>;
 }
 
-interface WebSocketOptions {
+export interface WebSocketOptions {
   type: "websocket";
   url: string;
 }
 
-interface SSEOptions {
+export interface SSEOptions {
   type: "sse";
   url: string;
 }
 
-type TransportOptions = StdioOptions | WebSocketOptions | SSEOptions;
+export type TransportOptions = StdioOptions | WebSocketOptions | SSEOptions;
 
 export interface MCPOptions {
   transport: TransportOptions;
@@ -972,7 +975,7 @@ export interface ContinueUIConfig {
   codeWrap?: boolean;
 }
 
-interface ContextMenuConfig {
+export interface ContextMenuConfig {
   comment?: string;
   docstring?: string;
   fix?: string;
@@ -980,7 +983,7 @@ interface ContextMenuConfig {
   fixGrammar?: string;
 }
 
-interface ModelRoles {
+export interface ModelRoles {
   inlineEdit?: string;
   applyCodeBlock?: string;
   repoMapFileSelection?: string;
@@ -1021,7 +1024,7 @@ export type CodeToEdit = RangeInFileWithContents | FileWithContents;
  * Represents the configuration for a quick action in the Code Lens.
  * Quick actions are custom commands that can be added to function and class declarations.
  */
-interface QuickActionConfig {
+export interface QuickActionConfig {
   /**
    * The title of the quick action that will display in the Code Lens.
    */
@@ -1046,7 +1049,7 @@ export type DefaultContextProvider = ContextProviderWithParams & {
   query?: string;
 };
 
-interface ExperimentalConfig {
+export interface ExperimentalConfig {
   contextMenuPrompts?: ContextMenuConfig;
   modelRoles?: ModelRoles;
   defaultContext?: DefaultContextProvider[];
@@ -1069,11 +1072,10 @@ interface ExperimentalConfig {
    * This is needed to crawl a large number of documentation sites that are dynamically rendered.
    */
   useChromiumForDocsCrawling?: boolean;
-  useTools?: boolean;
   modelContextProtocolServers?: MCPOptions[];
 }
 
-interface AnalyticsConfig {
+export interface AnalyticsConfig {
   type: string;
   url?: string;
   clientKey?: string;
@@ -1233,4 +1235,9 @@ export type PackageDocsResult = {
 } & (
   | { error: string; details?: never }
   | { details: PackageDetailsSuccess; error?: never }
-);
+  );
+
+export interface TerminalOptions {
+  reuseTerminal?: boolean,
+  terminalName?: string,
+}
