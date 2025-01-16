@@ -47,13 +47,18 @@ export const configSlice = createSlice({
         return;
       }
 
-      const defaultModelTitle =
-        config.models.find((model) => model.title === state.defaultModelTitle)
+      try {
+        const defaultModelTitle =
+          config.models.find((model) => model.title === state.defaultModelTitle)
           ?.title ||
-        config.models[0]?.title ||
-        "";
-      state.config = config;
-      state.defaultModelTitle = defaultModelTitle;
+          config.models[0]?.title ||
+          "";
+        state.defaultModelTitle = defaultModelTitle;
+      } catch {
+        state.defaultModelTitle = "";
+      } finally {
+        state.config = config;
+      }
     },
     updateConfig: (
       state,
