@@ -33,6 +33,7 @@ import { SecretStorage } from "./stubs/SecretStorage";
 class VsCodeIde implements IDE {
   ideUtils: VsCodeIdeUtils;
   secretStorage: SecretStorage;
+  private lastFileSaveTimestamp: number = Date.now();
 
   constructor(
     private readonly vscodeWebviewProtocolPromise: Promise<VsCodeWebviewProtocol>,
@@ -40,6 +41,14 @@ class VsCodeIde implements IDE {
   ) {
     this.ideUtils = new VsCodeIdeUtils();
     this.secretStorage = new SecretStorage(context);
+  }
+
+  public updateLastFileSaveTimestamp(): void {
+    this.lastFileSaveTimestamp = Date.now();
+  }
+
+  public getLastFileSaveTimestamp(): number {
+    return this.lastFileSaveTimestamp;
   }
 
   async readSecrets(keys: string[]): Promise<Record<string, string>> {
@@ -614,7 +623,7 @@ class VsCodeIde implements IDE {
     return vscode.workspace.fs.readDirectory(vscode.Uri.parse(dir)) as any;
   }
 
-  getIdeSettingsSync(): IdeSettings {
+  private getIdeSettingsSync(): IdeSettings {
     const settings = vscode.workspace.getConfiguration(EXTENSION_NAME);
     const remoteConfigServerUrl = settings.get<string | undefined>(
       "remoteConfigServerUrl",
@@ -631,9 +640,7 @@ class VsCodeIde implements IDE {
         "enableContinueForTeams",
         false,
       ),
-      continueTestEnvironment: settings.get<boolean>("enableContinueHub")
-        ? "production"
-        : "none",
+      continueTestEnvironment: "production",
       pauseCodebaseIndexOnStart: settings.get<boolean>(
         "pauseCodebaseIndexOnStart",
         false,
@@ -647,7 +654,8 @@ class VsCodeIde implements IDE {
   }
 
   async getIdeSettings(): Promise<IdeSettings> {
-    return this.getIdeSettingsSync();
+    const ideSettings = this.getIdeSettingsSync();
+    return ideSettings;
   }
 }
 
