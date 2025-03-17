@@ -272,7 +272,7 @@ async function intermediateToFinalConfig(
                 {
                   ...desc,
                   model: modelName,
-                  title: `${llm.title} - ${modelName}`,
+                  title: modelName,
                 },
                 ide.readFile.bind(ide),
                 uniqueId,
@@ -505,7 +505,11 @@ async function intermediateToFinalConfig(
         model: "rerank-2",
         ...params,
       };
-      return new rerankerClass(llmOptions);
+      return new rerankerClass(llmOptions, (url: string | URL, init: any) =>
+        fetchwithRequestOptions(url, init, {
+          ...params?.requestOptions,
+        }),
+      );
     }
     return null;
   }
@@ -539,18 +543,21 @@ async function intermediateToFinalConfig(
   // Apply MCP if specified
   const mcpManager = MCPManagerSingleton.getInstance();
   if (config.experimental?.modelContextProtocolServers) {
-    await Promise.all(
+    const abortController = new AbortController();
+    const mcpConnectionTimeout = setTimeout(
+      () => abortController.abort(),
+      4000,
+    );
+
+    await Promise.allSettled(
       config.experimental.modelContextProtocolServers?.map(
         async (server, index) => {
-          const mcpId = index.toString();
-          const mcpConnection = mcpManager.createConnection(mcpId, server);
-          if (!mcpConnection) {
-            return;
-          }
-
-          const abortController = new AbortController();
-
           try {
+            const mcpId = index.toString();
+            const mcpConnection = mcpManager.createConnection(mcpId, server);
+            if (!mcpConnection) {
+              return;
+            }
             const mcpError = await mcpConnection.modifyConfig(
               continueConfig,
               mcpId,
@@ -561,14 +568,21 @@ async function intermediateToFinalConfig(
             if (mcpError) {
               errors.push(mcpError);
             }
-          } catch (e: any) {
+          } catch (e) {
+            let errorMessage = "Failed to load MCP server";
+            if (e instanceof Error) {
+              if (e.name === "AbortError") {
+                errorMessage += ": connection timed out";
+              } else {
+                errorMessage += ": " + e.message;
+              }
+            }
             errors.push({
               fatal: false,
-              message: `Failed to load MCP server: ${e.message}`,
+              message: errorMessage,
             });
-            if (e.name !== "AbortError") {
-              throw e;
-            }
+          } finally {
+            clearTimeout(mcpConnectionTimeout);
           }
         },
       ) || [],
@@ -984,5 +998,6 @@ export {
   finalToBrowserConfig,
   intermediateToFinalConfig,
   loadContinueConfigFromJson,
-  type BrowserSerializedContinueConfig,
+  type BrowserSerializedContinueConfig
 };
+
