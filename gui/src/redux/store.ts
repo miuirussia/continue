@@ -1,4 +1,10 @@
-import { combineReducers, configureStore } from "@reduxjs/toolkit";
+import {
+  combineReducers,
+  configureStore,
+  ThunkDispatch,
+  UnknownAction,
+} from "@reduxjs/toolkit";
+import { createLogger } from "redux-logger";
 import {
   createMigrate,
   MigrationManifest,
@@ -10,56 +16,52 @@ import autoMergeLevel2 from "redux-persist/lib/stateReconciler/autoMergeLevel2";
 import storage from "redux-persist/lib/storage";
 import { IdeMessenger, IIdeMessenger } from "../context/IdeMessenger";
 import configReducer from "./slices/configSlice";
-import editModeStateReducer from "./slices/editModeState";
+import editModeStateReducer from "./slices/editState";
 import indexingReducer from "./slices/indexingSlice";
-import miscReducer from "./slices/miscSlice";
+import { profilesReducer } from "./slices/profilesSlice";
 import sessionReducer from "./slices/sessionSlice";
 import tabsReducer from "./slices/tabsSlice";
 import uiReducer from "./slices/uiSlice";
 
-export interface ChatMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
-}
-
 const rootReducer = combineReducers({
   session: sessionReducer,
-  misc: miscReducer,
   ui: uiReducer,
   editModeState: editModeStateReducer,
   config: configReducer,
   indexing: indexingReducer,
   tabs: tabsReducer,
+  profiles: profilesReducer,
 });
 
 const saveSubsetFilters = [
   createFilter("session", [
     "history",
-    "selectedOrganizationId",
-    "selectedProfile",
     "id",
     "lastSessionId",
     "title",
 
     // Persist edit mode in case closes in middle
     "mode",
-    "codeToEdit",
-
-    // TODO consider removing persisted profiles/orgs
-    "availableProfiles",
-    "organizations",
 
     // higher risk to persist
     // codeBlockApplyStates
     // symbols
-    // curCheckpointIndex
   ]),
-  // Don't persist any of the edit state for now
-  createFilter("editModeState", []),
-  createFilter("config", ["defaultModelTitle"]),
-  createFilter("ui", ["toolSettings", "useTools"]),
+  createFilter("editModeState", [
+    "returnToMode",
+    "lastNonEditSessionWasEmpty",
+    "codeToEdit",
+  ]),
+  createFilter("config", []),
+  createFilter("ui", ["toolSettings", "toolGroupSettings", "ruleSettings"]),
   createFilter("indexing", []),
   createFilter("tabs", ["tabs"]),
+  createFilter("profiles", [
+    "preferencesByProfileId",
+    "selectedProfileId",
+    "selectedOrganizationId",
+    "organizations",
+  ]),
 ];
 
 const migrations: MigrationManifest = {
@@ -103,7 +105,16 @@ const persistedReducer = persistReducer<ReturnType<typeof rootReducer>>(
   rootReducer,
 );
 
-export function setupStore() {
+export function setupStore(options: { ideMessenger?: IIdeMessenger }) {
+  const ideMessenger = options.ideMessenger ?? new IdeMessenger();
+
+  const logger = createLogger({
+    // Customize logger options if needed
+    collapsed: true, // Collapse console groups by default
+    timestamp: false, // Remove timestamps from log
+    diff: true, // Show diff between states
+  });
+
   return configureStore({
     // persistedReducer causes type errors with async thunks
     reducer: persistedReducer as unknown as typeof rootReducer,
@@ -113,19 +124,29 @@ export function setupStore() {
         serializableCheck: false,
         thunk: {
           extraArgument: {
-            ideMessenger: new IdeMessenger(),
+            ideMessenger,
           },
         },
       }),
+    // This can be uncommented to get detailed Redux logs
+    // .concat(logger),
   });
 }
 
+export type ThunkExtrasType = { ideMessenger: IIdeMessenger };
+
 export type ThunkApiType = {
   state: RootState;
-  extra: { ideMessenger: IIdeMessenger };
+  extra: ThunkExtrasType;
 };
 
-export const store = setupStore();
+export type AppThunkDispatch = ThunkDispatch<
+  RootState,
+  ThunkExtrasType,
+  UnknownAction
+>;
+
+export const store = setupStore({});
 
 export type RootState = ReturnType<typeof rootReducer>;
 

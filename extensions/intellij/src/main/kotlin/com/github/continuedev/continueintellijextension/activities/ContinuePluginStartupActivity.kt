@@ -1,4 +1,5 @@
 package com.github.continuedev.continueintellijextension.activities
+
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
 import com.github.continuedev.continueintellijextension.auth.AuthListener
 import com.github.continuedev.continueintellijextension.auth.ContinueAuthService
@@ -13,7 +14,6 @@ import com.github.continuedev.continueintellijextension.utils.toUriOrNull
 import com.intellij.openapi.actionSystem.KeyboardShortcut
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ApplicationNamesInfo
-import com.intellij.openapi.components.ServiceManager
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.keymap.KeymapManager
@@ -121,14 +121,10 @@ class ContinuePluginStartupActivity : StartupActivity, DumbAware {
 
     private fun initializePlugin(project: Project) {
         val coroutineScope = CoroutineScope(Dispatchers.IO)
-        val continuePluginService = ServiceManager.getService(
-            project,
-            ContinuePluginService::class.java
-        )
+        val continuePluginService = project.service<ContinuePluginService>()
 
         coroutineScope.launch {
-            val settings =
-                ServiceManager.getService(ContinueExtensionSettings::class.java)
+            val settings = service<ContinueExtensionSettings>()
             if (!settings.continueState.shownWelcomeDialog) {
                 settings.continueState.shownWelcomeDialog = true
                 // Open tutorial file
@@ -152,17 +148,13 @@ class ContinuePluginStartupActivity : StartupActivity, DumbAware {
             val connection = ApplicationManager.getApplication().messageBus.connect()
             connection.subscribe(SettingsListener.TOPIC, object : SettingsListener {
                 override fun settingsUpdated(settings: ContinueExtensionSettings.ContinueState) {
-                    continuePluginService.coreMessenger?.request("config/ideSettingsUpdate", settings, null) { _ -> }
-                    continuePluginService.sendToWebview(
-                        "didChangeIdeSettings", mapOf(
-                            "settings" to mapOf(
-                                "remoteConfigServerUrl" to settings.remoteConfigServerUrl,
-                                "remoteConfigSyncPeriod" to settings.remoteConfigSyncPeriod,
-                                "userToken" to settings.userToken,
-                                "enableControlServerBeta" to settings.enableContinueTeamsBeta
-                            )
-                        )
-                    )
+                    continuePluginService.coreMessenger?.request(
+                        "config/ideSettingsUpdate", mapOf(
+                            "remoteConfigServerUrl" to settings.remoteConfigServerUrl,
+                            "remoteConfigSyncPeriod" to settings.remoteConfigSyncPeriod,
+                            "userToken" to settings.userToken,
+                        ), null
+                    ) { _ -> }
                 }
             })
 
@@ -208,6 +200,7 @@ class ContinuePluginStartupActivity : StartupActivity, DumbAware {
                         continuePluginService.coreMessenger?.request("files/closed", data, null) { _ -> }
                     }
                 }
+
                 override fun fileOpened(source: FileEditorManager, file: VirtualFile) {
                     file.toUriOrNull()?.let { uri ->
                         val data = mapOf("uris" to listOf(uri))
@@ -215,7 +208,6 @@ class ContinuePluginStartupActivity : StartupActivity, DumbAware {
                     }
                 }
             })
-
 
 
             // Listen for theme changes
@@ -236,7 +228,6 @@ class ContinuePluginStartupActivity : StartupActivity, DumbAware {
                     "sessionInfo" to initialSessionInfo
                 )
                 continuePluginService.coreMessenger?.request("didChangeControlPlaneSessionInfo", data, null) { _ -> }
-                continuePluginService.sendToWebview("didChangeControlPlaneSessionInfo", data)
             }
 
             connection.subscribe(AuthListener.TOPIC, object : AuthListener {
@@ -253,7 +244,6 @@ class ContinuePluginStartupActivity : StartupActivity, DumbAware {
                         data,
                         null
                     ) { _ -> }
-                    continuePluginService.sendToWebview("didChangeControlPlaneSessionInfo", data)
                 }
             })
 
@@ -275,7 +265,7 @@ class ContinuePluginStartupActivity : StartupActivity, DumbAware {
 
             EditorFactory.getInstance().eventMulticaster.addSelectionListener(
                 listener,
-                ContinuePluginDisposable.getInstance(project)
+                project.service<ContinuePluginDisposable>()
             )
 
             val coreMessengerManager = CoreMessengerManager(project, ideProtocolClient, coroutineScope)

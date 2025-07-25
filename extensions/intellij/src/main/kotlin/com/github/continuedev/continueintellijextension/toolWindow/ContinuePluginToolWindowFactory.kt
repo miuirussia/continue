@@ -3,15 +3,15 @@ package com.github.continuedev.continueintellijextension.toolWindow
 import com.github.continuedev.continueintellijextension.services.ContinuePluginService
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.AnAction
-import com.intellij.openapi.components.ServiceManager
+import com.intellij.openapi.components.service
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.content.ContentFactory
-import javax.swing.*
+import javax.swing.JComponent
 
-const val JS_QUERY_POOL_SIZE = 200
+const val JS_QUERY_POOL_SIZE = "200"
 
 class ContinuePluginToolWindowFactory : ToolWindowFactory, DumbAware {
   override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
@@ -43,13 +43,17 @@ class ContinuePluginToolWindowFactory : ToolWindowFactory, DumbAware {
   class ContinuePluginWindow(project: Project) {
     private val defaultGUIUrl = "http://continue/index.html"
 
+    init {
+      System.setProperty("ide.browser.jcef.jsQueryPoolSize", JS_QUERY_POOL_SIZE)
+      System.setProperty("ide.browser.jcef.contextMenu.devTools.enabled", "true")
+      System.setProperty("ide.browser.jcef.out-of-process.enabled", "false")
+    }
+
     val browser: ContinueBrowser by lazy {
       val url = System.getenv("GUI_URL")?.toString() ?: defaultGUIUrl
 
       val browser = ContinueBrowser(project, url)
-      val continuePluginService =
-          ServiceManager.getService(project, ContinuePluginService::class.java)
-      continuePluginService.continuePluginWindow = this
+      project.service<ContinuePluginService>().continuePluginWindow = this
       browser
     }
 

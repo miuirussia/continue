@@ -6,23 +6,14 @@ import { DEFAULT_MAX_TOKENS } from "core/llm/constants";
 export type ConfigState = {
   configError: ConfigValidationError[] | undefined;
   config: BrowserSerializedContinueConfig;
-  defaultModelTitle?: string;
+  loading: boolean;
 };
 
-const EMPTY_CONFIG: BrowserSerializedContinueConfig = {
-  slashCommands: [
-    {
-      name: "share",
-      description: "Export the current chat session to markdown",
-    },
-    {
-      name: "cmd",
-      description: "Generate a shell command",
-    },
-  ],
+export const EMPTY_CONFIG: BrowserSerializedContinueConfig = {
+  slashCommands: [],
   contextProviders: [],
-  models: [],
   tools: [],
+  mcpServerStatuses: [],
   usePlatform: true,
   modelsByRole: {
     chat: [],
@@ -42,12 +33,13 @@ const EMPTY_CONFIG: BrowserSerializedContinueConfig = {
     rerank: null,
     embed: null,
   },
+  rules: [],
 };
 
 const initialState: ConfigState = {
   configError: undefined,
-  defaultModelTitle: undefined,
   config: EMPTY_CONFIG,
+  loading: false,
 };
 
 export const configSlice = createSlice({
@@ -61,7 +53,11 @@ export const configSlice = createSlice({
       }: PayloadAction<ConfigResult<BrowserSerializedContinueConfig>>,
     ) => {
       const { config, errors } = result;
-      state.configError = errors;
+      if (!errors || errors.length === 0) {
+        state.configError = undefined;
+      } else {
+        state.configError = errors;
+      }
 
       // If an error is found in config on save,
       // We must invalidate the GUI config too,
@@ -69,7 +65,6 @@ export const configSlice = createSlice({
       // Don't invalidate the loaded config
       if (!config) {
         state.config = EMPTY_CONFIG;
-        state.defaultModelTitle = undefined;
       } else {
         try {
           state.defaultModelTitle =
@@ -88,45 +83,19 @@ export const configSlice = createSlice({
     ) => {
       state.config = config;
     },
-    setDefaultModel: (
-      state,
-      { payload }: PayloadAction<{ title: string; force?: boolean }>,
-    ) => {
-      const model = state.config.models.find(
-        (model) => model.title === payload.title,
-      );
-      if (!model && !payload.force) return;
-      return {
-        ...state,
-        defaultModelTitle: payload.title,
-      };
-    },
-    cycleDefaultModel: (state, { payload }: PayloadAction<"next" | "prev">) => {
-      const currentIndex = state.config.models.findIndex(
-        (model) => model.title === state.defaultModelTitle,
-      );
-      const nextIndex =
-        (currentIndex +
-          (payload === "next" ? 1 : -1) +
-          state.config.models.length) %
-        state.config.models.length;
-      return {
-        ...state,
-        defaultModelTitle: state.config.models[nextIndex].title,
-      };
+    setConfigLoading: (state, { payload: loading }: PayloadAction<boolean>) => {
+      state.loading = loading;
     },
   },
   selectors: {
-    selectDefaultModel: (state) => {
-      return state.config.models.find(
-        (model) => model.title === state.defaultModelTitle,
-      );
-    },
-    selectDefaultModelContextLength: (state): number => {
+    selectSelectedChatModelContextLength: (state): number => {
       return (
-        configSlice.getSelectors().selectDefaultModel(state)?.contextLength ||
+        state.config.selectedModelByRole.chat?.contextLength ||
         DEFAULT_MAX_TOKENS
       );
+    },
+    selectSelectedChatModel: (state) => {
+      return state.config.selectedModelByRole.chat;
     },
     selectUIConfig: (state) => {
       return state.config?.ui ?? null;
@@ -134,17 +103,13 @@ export const configSlice = createSlice({
   },
 });
 
-export const {
-  setDefaultModel,
-  cycleDefaultModel,
-  updateConfig,
-  setConfigResult,
-} = configSlice.actions;
+export const { updateConfig, setConfigResult, setConfigLoading } =
+  configSlice.actions;
 
 export const {
-  selectDefaultModel,
-  selectDefaultModelContextLength,
+  selectSelectedChatModelContextLength,
   selectUIConfig,
+  selectSelectedChatModel,
 } = configSlice.selectors;
 
 export default configSlice.reducer;
