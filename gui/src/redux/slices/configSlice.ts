@@ -66,15 +66,7 @@ export const configSlice = createSlice({
       if (!config) {
         state.config = EMPTY_CONFIG;
       } else {
-        try {
-          state.defaultModelTitle =
-            config.models.find((model) => model.title === state.defaultModelTitle)
-              ?.title || config.models[0]?.title;
-        } catch {
-          state.defaultModelTitle = undefined;
-        } finally {
-          state.config = config;
-        }
+        state.config = config;
       }
     },
     updateConfig: (
