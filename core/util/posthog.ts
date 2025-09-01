@@ -5,6 +5,7 @@ import { IdeInfo } from "../index.js";
 
 import type { PostHog as PostHogType } from "posthog-node";
 import { extractMinimalStackTraceInfo } from "./extractMinimalStackTraceInfo.js";
+import { TokensBatchingService } from "./TokensBatchingService.js";
 
 export enum PosthogFeatureFlag {
   AutocompleteTimeout = "autocomplete-timeout",
@@ -66,6 +67,7 @@ export class Telemetry {
   }
 
   static shutdownPosthogClient() {
+    TokensBatchingService.getInstance().shutdown();
     Telemetry.client?.shutdown();
   }
 
