@@ -12,15 +12,17 @@ import {
   getService,
   initializeServices,
   SERVICE_NAMES,
+  services,
 } from "../services/index.js";
 import {
   AuthServiceState,
   ConfigServiceState,
   ModelServiceState,
 } from "../services/types.js";
-import { createSession, updateSessionHistory } from "../session.js";
+import { createSession } from "../session.js";
 import { constructSystemMessage } from "../systemMessage.js";
 import { telemetryService } from "../telemetry/telemetryService.js";
+import { gracefulExit } from "../util/exit.js";
 import { formatError } from "../util/formatError.js";
 import { logger } from "../util/logger.js";
 import { readStdinSync } from "../util/stdin.js";
@@ -38,6 +40,7 @@ interface ServeOptions extends ExtendedCommandOptions {
   port?: string;
 }
 
+// eslint-disable-next-line max-statements
 export async function serve(prompt?: string, options: ServeOptions = {}) {
   // Check if prompt should come from stdin instead of parameter
   let actualPrompt = prompt;
@@ -122,6 +125,13 @@ export async function serve(prompt?: string, options: ServeOptions = {}) {
 
   const session = createSession(initialHistory);
 
+  // Align ChatHistoryService with server session and enable remote mode
+  try {
+    await services.chatHistory.initialize(session, false);
+  } catch {
+    // Fallback: continue even if service init fails; stream will still work with arrays
+  }
+
   // Initialize server state
   const state: ServerState = {
     session,
@@ -146,6 +156,14 @@ export async function serve(prompt?: string, options: ServeOptions = {}) {
   // GET /state - Return the current state
   app.get("/state", (_req: Request, res: Response) => {
     state.lastActivity = Date.now();
+    // Ensure session history reflects ChatHistoryService state
+    try {
+      state.session.history = services.chatHistory.getHistory();
+    } catch (e) {
+      logger.debug(
+        `Failed to sync session history from ChatHistoryService: ${formatError(e)}`,
+      );
+    }
     res.json({
       session: state.session, // Return session directly instead of converting
       isProcessing: state.isProcessing,
@@ -285,12 +303,16 @@ export async function serve(prompt?: string, options: ServeOptions = {}) {
     }
 
     // Give a moment for the response to be sent
-    setTimeout(() => {
+    const handleExitResponse = () => {
       server.close(() => {
         telemetryService.stopActiveTime();
-        process.exit(0);
+        gracefulExit(0).catch((err) => {
+          logger.error(`Graceful exit failed: ${formatError(err)}`);
+          process.exit(1);
+        });
       });
-    }, 100);
+    };
+    setTimeout(handleExitResponse, 100);
   });
 
   const server = app.listen(port, () => {
@@ -328,6 +350,27 @@ export async function serve(prompt?: string, options: ServeOptions = {}) {
   });
 
   // Process messages from the queue
+  function removePartialAssistantMessage(state: ServerState) {
+    try {
+      const svcHistory = services.chatHistory.getHistory();
+      const last = svcHistory[svcHistory.length - 1];
+      if (last && last.message.role === "assistant" && !last.message.content) {
+        const trimmed = svcHistory.slice(0, -1);
+        services.chatHistory.setHistory(trimmed);
+      }
+    } catch {
+      const lastMessage =
+        state.session.history[state.session.history.length - 1];
+      if (
+        lastMessage &&
+        lastMessage.message.role === "assistant" &&
+        !lastMessage.message.content
+      ) {
+        state.session.history.pop();
+      }
+    }
+  }
+
   async function processMessages(state: ServerState, llmApi: any) {
     while (state.messageQueue.length > 0 && state.serverRunning) {
       const userMessage = state.messageQueue.shift()!;
@@ -335,11 +378,16 @@ export async function serve(prompt?: string, options: ServeOptions = {}) {
       state.shouldInterrupt = false;
       state.lastActivity = Date.now();
 
-      // Add user message to history
-      state.session.history.push({
-        message: { role: "user", content: userMessage },
-        contextItems: [],
-      });
+      // Add user message via ChatHistoryService (single source of truth)
+      try {
+        services.chatHistory.addUserMessage(userMessage);
+      } catch {
+        // Fallback to local array if service unavailable
+        state.session.history.push({
+          message: { role: "user", content: userMessage },
+          contextItems: [],
+        });
+      }
 
       try {
         // Create new abort controller for this response
@@ -353,31 +401,26 @@ export async function serve(prompt?: string, options: ServeOptions = {}) {
           () => state.shouldInterrupt,
         );
 
-        // Save session after successful response
-        updateSessionHistory(state.session.history);
+        // No direct persistence here; ChatHistoryService handles persistence when appropriate
 
         state.lastActivity = Date.now();
       } catch (e: any) {
         if (e.name === "AbortError") {
           logger.debug("Response interrupted");
-          // Remove the partial assistant message if it exists
-          const lastMessage =
-            state.session.history[state.session.history.length - 1];
-          if (
-            lastMessage &&
-            lastMessage.message.role === "assistant" &&
-            !lastMessage.message.content
-          ) {
-            state.session.history.pop();
-          }
+          // Remove any partial assistant message
+          removePartialAssistantMessage(state);
         } else {
           logger.error(`Error: ${formatError(e)}`);
-          // Add error message to chat history and display messages
+          // Add error message via ChatHistoryService
           const errorMessage = `Error: ${formatError(e)}`;
-          state.session.history.push({
-            message: { role: "assistant", content: errorMessage },
-            contextItems: [],
-          });
+          try {
+            services.chatHistory.addAssistantMessage(errorMessage);
+          } catch {
+            state.session.history.push({
+              message: { role: "assistant", content: errorMessage },
+              contextItems: [],
+            });
+          }
         }
       } finally {
         state.currentAbortController = null;
@@ -397,7 +440,10 @@ export async function serve(prompt?: string, options: ServeOptions = {}) {
       state.serverRunning = false;
       server.close(() => {
         telemetryService.stopActiveTime();
-        process.exit(0);
+        gracefulExit(0).catch((err) => {
+          logger.error(`Graceful exit failed: ${formatError(err)}`);
+          process.exit(1);
+        });
       });
       if (inactivityChecker) {
         clearInterval(inactivityChecker);
@@ -416,7 +462,10 @@ export async function serve(prompt?: string, options: ServeOptions = {}) {
     }
     server.close(() => {
       telemetryService.stopActiveTime();
-      process.exit(0);
+      gracefulExit(0).catch((err) => {
+        logger.error(`Graceful exit failed: ${formatError(err)}`);
+        process.exit(1);
+      });
     });
   });
 }
